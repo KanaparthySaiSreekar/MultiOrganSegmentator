@@ -1,0 +1,43 @@
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*.so
+
+# Byte-compiled / optimized / DLL files
+*.pyd
+*.pyo
+
+# Virtual environments
+venv/
+env/
+
+# VS Code settings
+.vscode/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# macOS and Linux system files
+.DS_Store
+
+# Node.js and React specific
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Build output
+/dist
+/build
+
+# Logs
+*.log
+
+# dotenv environment variable files
+.env
+.env.local
+.env.*.local
+
+# Ignore .h5 files
+*.h5
