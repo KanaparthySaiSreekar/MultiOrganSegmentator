@@ -8,16 +8,16 @@ interface OrganColor {
 }
 
 const organColors: OrganColor[] = [
-  { name: 'Spleen', color: '#FF0094' },
-  { name: 'Right Kidney', color: '#FFFF00' },
-  { name: 'Left Kidney', color: '#0000FF' },
+  { name: 'Spleen', color: '#8800B9' },
+  { name: 'Right Kidney', color: '#00E5FF' },
+  { name: 'Left Kidney', color: '#FF0000' },
   { name: 'Liver', color: '#FF00FF' },
-  { name: 'Gallbladder', color: '#00FF00' },
-  { name: 'Stomach', color: '#7497C6' },
-  { name: 'Aorta', color: '#FF0000' },
-  { name: 'Inferior Vena Cava', color: '#0992FF' },
-  { name: 'Portal Vein', color: '#415B00' },
-  { name: 'Pancreas', color: '#00FFFF' },
+  { name: 'Gallbladder', color: '#3FF63F' },
+  { name: 'Stomach', color: '#BD8A43' },
+  { name: 'Aorta', color: 'darkblue' },
+  { name: 'Inferior Vena Cava', color: '#FF8C00' },
+  { name: 'Portal Vein', color: 'darkgreen' },
+  { name: 'Pancreas', color: '#EAEA08' },
   { name: 'Background', color: '#000000' },
 ];
 
