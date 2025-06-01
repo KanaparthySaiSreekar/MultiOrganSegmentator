@@ -8,6 +8,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 import google.generativeai as genai
+import re
 
 # Initialize the FastAPI app
 app = FastAPI()
@@ -133,11 +134,11 @@ async def get_diagnosis_gemini(segmented_image: UploadFile = File(...)):
 
         
         prompt_parts = [
-            "Analyze this medical image segmentation. It highlights various organs. ",
-            "Based on the segmentation, identify the organs present and provide a concise medical diagnosis or observation. ",
-            "Highlight any abnormalities or noteworthy findings if visible in the segmentation. ",
-            "For example, if you see an enlarged organ, mention it. If a normal organ is missing, mention it. ",
-            "Focus purely on anatomical observations from the segmentation. Do not guess about conditions not visible.",
+            "Analyze the provided CT scan segmentation, which delineates anatomical structures of the kidney using color-coded regions. As a multi-specialty doctor with 20 years of experience in nephrology, radiology, and urology, identify all visible kidney structures and provide a concise medical observation or diagnosis focusing strictly on anatomical findings.",
+            "Highlight any abnormalities, such as enlarged, atrophied, or displaced renal structures, or the absence of expected anatomical features (e.g., missing renal artery or ureter). Avoid speculating on conditions not directly observable in the segmentation.",
+            "Provide specific, actionable suggestions for further evaluation or management based on the findings, tailored for a medical setting.",
+            "Format the response as follows:  \n- *Identified Structures: List all kidney structures visible in the segmentation (e.g., renal cortex, medulla, renal pelvis).  \n- **Anatomical Observations: Describe the anatomical findings, noting any abnormalities (e.g., 'The renal pelvis appears dilated; the left renal artery is not visible').  \n- **Suggestions*: Recommend next steps for clinical evaluation or management (e.g., 'Recommend Doppler ultrasound to assess renal artery absence; consider MR urography for dilated renal pelvis').",
+            "Additional Notes:  \n- Assume the CT segmentation provides sufficient detail for anatomical analysis of kidney structures.  \n- Deliver the response with expertise across nephrology, radiology, and urology, focusing on precise, objective observations suitable for a medical record.  \n- Include quantitative observations if the segmentation allows (e.g., relative size or volume of renal structures).  \n- Do not reference the image directly in the response (e.g., avoid phrases like 'the provided image shows').  \n- Maintain a professional tone, as if documenting findings for a patient chart.  \n- Optionally, list possible anatomical causes for observed abnormalities (e.g., 'Dilated renal pelvis may suggest obstruction') while staying within the scope of visible findings.",
             image_part,
             "Detailed diagnosis:"
         ]
@@ -145,7 +146,8 @@ async def get_diagnosis_gemini(segmented_image: UploadFile = File(...)):
         response = model.generate_content(prompt_parts)
         print(response)
         diagnosis_text = response.text
-
+        diagnosis_text = re.sub(r'\*+', '', diagnosis_text)
+        diagnosis_text = re.sub(r'\s{2,}', ' ', diagnosis_text).strip()
         return JSONResponse(content={"diagnosis": diagnosis_text})
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing diagnosis: {str(e)}")

@@ -172,6 +172,7 @@ const Index = () => {
   const handleReset = () => {
     setImageURL("");
     setOutputImageURL("");
+    setDiagnosis("");
     setFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
