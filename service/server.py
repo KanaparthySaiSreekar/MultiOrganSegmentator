@@ -1,11 +1,13 @@
+
 import os
 import numpy as np
 import cv2
 import tensorflow as tf
 import scipy.io
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+import google.generativeai as genai
 
 # Initialize the FastAPI app
 app = FastAPI()
@@ -13,14 +15,21 @@ app = FastAPI()
 # Handle CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust this based on your security needs
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Suppress TensorFlow logs
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
+
+
+GEMINI_API_KEY = "API_KEY"
+genai.configure(api_key=GEMINI_API_KEY)
+
+model = genai.GenerativeModel('gemini-1.5-flash')
+
 
 # Global parameters
 IMG_H = 256
@@ -105,6 +114,41 @@ async def process_image(image: UploadFile = File(...)):
 
     # Return the processed image
     return FileResponse(save_image_path, media_type='image/png')
+
+@app.post('/get_diagnosis_gemini')
+async def get_diagnosis_gemini(segmented_image: UploadFile = File(...)):
+    """
+    Takes a segmented PNG image, sends it to the Gemini API with a prompt,
+    and returns Gemini's diagnosis.
+    """
+    try:
+        
+        image_bytes = await segmented_image.read()
+
+       
+        image_part = {
+            'mime_type': 'image/png',
+            'data': image_bytes
+        }
+
+        
+        prompt_parts = [
+            "Analyze this medical image segmentation. It highlights various organs. ",
+            "Based on the segmentation, identify the organs present and provide a concise medical diagnosis or observation. ",
+            "Highlight any abnormalities or noteworthy findings if visible in the segmentation. ",
+            "For example, if you see an enlarged organ, mention it. If a normal organ is missing, mention it. ",
+            "Focus purely on anatomical observations from the segmentation. Do not guess about conditions not visible.",
+            image_part,
+            "Detailed diagnosis:"
+        ]
+
+        response = model.generate_content(prompt_parts)
+        print(response)
+        diagnosis_text = response.text
+
+        return JSONResponse(content={"diagnosis": diagnosis_text})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing diagnosis: {str(e)}")
 
 # Run the app with Uvicorn
 if __name__ == '__main__':

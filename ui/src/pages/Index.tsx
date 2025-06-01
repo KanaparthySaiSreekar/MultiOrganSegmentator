@@ -1,35 +1,36 @@
-
-import React, { useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, ArrowRight, Check, X, ArrowLeft } from 'lucide-react';
+import React, { useState, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Upload, ArrowRight, Check, X, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { Link } from 'react-router-dom';
-import OrganLegend from '@/components/OrganLegend';
-import ImageCard from '@/components/ImageCard';
+import { Link } from "react-router-dom";
+import OrganLegend from "@/components/OrganLegend";
+import ImageCard from "@/components/ImageCard";
+import ImageDescription from "@/components/ImageDescription";
 
 const Index = () => {
-  const [imageURL, setImageURL] = useState<string>('');
-  const [outputImageURL, setOutputImageURL] = useState<string>('');
+  const [imageURL, setImageURL] = useState<string>("");
+  const [outputImageURL, setOutputImageURL] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [diagnosis, setDiagnosis] = useState<string>("");
+  const [isDiagnosing, setIsDiagnosing] = useState<boolean>(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const selectedFile = e.target.files?.[0];
-  if (!selectedFile) return;
-  if (imageURL) URL.revokeObjectURL(imageURL);
-  if (outputImageURL) URL.revokeObjectURL(outputImageURL);
-  setFile(selectedFile);
-  const newImageURL = URL.createObjectURL(selectedFile);
-  setImageURL(newImageURL);
-  setOutputImageURL('');
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+    if (imageURL) URL.revokeObjectURL(imageURL);
+    if (outputImageURL) URL.revokeObjectURL(outputImageURL);
+    setFile(selectedFile);
+    const newImageURL = URL.createObjectURL(selectedFile);
+    setImageURL(newImageURL);
+    setOutputImageURL("");
 
-  toast.success("Image uploaded successfully", {
-    description: "You can now process the image.",
-    icon: <Check className="h-4 w-4" />,
-  });
-};
+    toast.success("Image uploaded successfully", {
+      description: "You can now process the image.",
+      icon: <Check className="h-4 w-4" />,
+    });
+  };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -39,14 +40,14 @@ const Index = () => {
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const droppedFile = e.dataTransfer.files[0];
       setFile(droppedFile);
       const imageURL = URL.createObjectURL(droppedFile);
       setImageURL(imageURL);
-      setOutputImageURL('');
-      
+      setOutputImageURL("");
+
       toast.success("Image uploaded successfully", {
         description: "You can now process the image.",
         icon: <Check className="h-4 w-4" />,
@@ -66,37 +67,37 @@ const Index = () => {
       });
       return;
     }
-    
+
     setIsProcessing(true);
     const formData = new FormData();
-    formData.append('image', file);
-    
+    formData.append("image", file);
+
     try {
-      const response = await fetch('http://localhost:8000/process_image', {
-        method: 'POST',
+      const response = await fetch("http://localhost:8000/process_image", {
+        method: "POST",
         body: formData,
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('Error processing image:', errorData.error);
+        console.error("Error processing image:", errorData.error);
         toast.error("Processing failed", {
           description: errorData.error || "An unknown error occurred.",
           icon: <X className="h-4 w-4" />,
         });
         return;
       }
-      
+
       const blob = await response.blob();
       const outputImageURL = URL.createObjectURL(blob);
       setOutputImageURL(outputImageURL);
-      
+
       toast.success("Image processed successfully", {
         description: "Your segmented image is ready.",
         icon: <Check className="h-4 w-4" />,
       });
     } catch (error) {
-      console.error('Error processing image:', error);
+      console.error("Error processing image:", error);
       toast.error("Processing failed", {
         description: "Could not connect to the server. Please try again.",
         icon: <X className="h-4 w-4" />,
@@ -106,16 +107,62 @@ const Index = () => {
     }
   };
 
+  const handleGetDiagnosis = async () => {
+    if (!outputImageURL) return;
+    setIsDiagnosing(true);
+    setDiagnosis("");
+    try {
+      // Fetch the output image as a blob
+      const response = await fetch(outputImageURL);
+      const blob = await response.blob();
+      const file = new File([blob], "segmented.png", { type: "image/png" });
+
+      const formData = new FormData();
+      formData.append("segmented_image", file);
+
+      const diagnosisResponse = await fetch(
+        "http://localhost:8000/get_diagnosis_gemini",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!diagnosisResponse.ok) {
+        const errorData = await diagnosisResponse.json();
+        toast.error("Diagnosis failed", {
+          description: errorData.detail || "An unknown error occurred.",
+          icon: <X className="h-4 w-4" />,
+        });
+        setIsDiagnosing(false);
+        return;
+      }
+
+      const data = await diagnosisResponse.json();
+      setDiagnosis(data.diagnosis);
+      toast.success("Diagnosis complete", {
+        description: "AI diagnosis received.",
+        icon: <Check className="h-4 w-4" />,
+      });
+    } catch (error) {
+      toast.error("Diagnosis failed", {
+        description: "Could not connect to the server.",
+        icon: <X className="h-4 w-4" />,
+      });
+    } finally {
+      setIsDiagnosing(false);
+    }
+  };
   const handleDownload = () => {
     if (!outputImageURL) return;
-    
-    const link = document.createElement('a');
+
+    const link = document.createElement("a");
     link.href = outputImageURL;
-    link.download = 'segmented-organ-image.png';
+    link.download = "segmented-organ-image.png";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+
     toast.success("Image downloaded", {
       description: "The segmented image has been saved to your device.",
       icon: <Check className="h-4 w-4" />,
@@ -123,11 +170,11 @@ const Index = () => {
   };
 
   const handleReset = () => {
-    setImageURL('');
-    setOutputImageURL('');
+    setImageURL("");
+    setOutputImageURL("");
     setFile(null);
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      fileInputRef.current.value = "";
     }
   };
 
@@ -135,22 +182,25 @@ const Index = () => {
     <div className="min-h-screen flex flex-col relative overflow-hidden">
       {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 -z-10" />
-      
+
       {/* Content */}
-      <motion.div 
+      <motion.div
         className="container max-w-6xl mx-auto px-4 py-8 md:py-16 flex-1 flex flex-col"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6 }}
       >
         {/* Header */}
-        <motion.div 
+        <motion.div
           className="text-center mb-8 md:mb-16"
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
         >
-          <Link to="/" className="inline-flex items-center gap-2 text-primary hover:underline mb-4">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 text-primary hover:underline mb-4"
+          >
             <ArrowLeft className="h-4 w-4" />
             Back to Home
           </Link>
@@ -162,12 +212,15 @@ const Index = () => {
           >
             AI-Powered
           </motion.div>
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-3">Organ Segmentation</h1>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-3">
+            Organ Segmentation
+          </h1>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            Upload a medical image to automatically identify and color-code different organs.
+            Upload a medical image to automatically identify and color-code
+            different organs.
           </p>
         </motion.div>
-        
+
         {/* Main content */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto w-full">
           {/* Input section */}
@@ -178,7 +231,7 @@ const Index = () => {
               transition={{ duration: 0.4, delay: 0.3 }}
             >
               <h2 className="text-xl font-semibold mb-4">Input Image</h2>
-              
+
               <input
                 type="file"
                 accept="image/*"
@@ -186,7 +239,7 @@ const Index = () => {
                 className="hidden"
                 ref={fileInputRef}
               />
-              
+
               {!imageURL ? (
                 <div
                   className="upload-zone h-64 md:h-80"
@@ -195,8 +248,12 @@ const Index = () => {
                   onDrop={handleDrop}
                 >
                   <Upload className="h-10 w-10 mb-4 text-primary/60" />
-                  <p className="font-medium">Drop your image here or click to browse</p>
-                  <p className="text-sm text-muted-foreground mt-2">Supports JPG, PNG, DICOM</p>
+                  <p className="font-medium">
+                    Drop your image here or click to browse
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Supports JPG, PNG, DICOM
+                  </p>
                 </div>
               ) : (
                 <ImageCard
@@ -206,7 +263,7 @@ const Index = () => {
                 />
               )}
             </motion.div>
-            
+
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -217,7 +274,7 @@ const Index = () => {
                 onClick={handleProcessImage}
                 disabled={!file || isProcessing}
                 className={`btn-primary px-6 py-2.5 rounded-lg flex items-center gap-2 ${
-                  !file || isProcessing ? 'opacity-50 cursor-not-allowed' : ''
+                  !file || isProcessing ? "opacity-50 cursor-not-allowed" : ""
                 }`}
               >
                 {isProcessing ? (
@@ -234,7 +291,7 @@ const Index = () => {
               </button>
             </motion.div>
           </div>
-          
+
           {/* Output section */}
           <div className="space-y-6">
             <motion.div
@@ -242,8 +299,10 @@ const Index = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.5 }}
             >
-              <h2 className="text-xl font-semibold mb-4">Segmentation Result</h2>
-              
+              <h2 className="text-xl font-semibold mb-4">
+                Segmentation Result
+              </h2>
+
               <AnimatePresence mode="wait">
                 {outputImageURL ? (
                   <ImageCard
@@ -270,7 +329,9 @@ const Index = () => {
                       </div>
                     </div>
                     <div className="p-4">
-                      <h3 className="font-medium text-center">Segmented Image</h3>
+                      <h3 className="font-medium text-center">
+                        Segmented Image
+                      </h3>
                     </div>
                   </motion.div>
                 )}
@@ -278,8 +339,19 @@ const Index = () => {
             </motion.div>
           </div>
         </div>
+
+        <div className="max-w-5xl mx-auto w-full">
+          {outputImageURL && (
+            <ImageDescription
+              imageURL={outputImageURL}
+              description={diagnosis}
+              isGenerating={isDiagnosing}
+              onGenerateDescription={handleGetDiagnosis}
+              title="Segmented Image Analysis"
+            />
+          )}
+        </div>
         
-        {/* Legend section */}
         <motion.div
           className="mt-10 md:mt-16"
           initial={{ opacity: 0, y: 20 }}
@@ -289,9 +361,9 @@ const Index = () => {
           <OrganLegend />
         </motion.div>
       </motion.div>
-      
+
       {/* Footer */}
-      <motion.div 
+      <motion.div
         className="py-4 text-center text-sm text-muted-foreground border-t border-border/40 mt-auto"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
