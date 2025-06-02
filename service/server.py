@@ -31,7 +31,7 @@ app.add_middleware(
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
 
 # Configure Gemini API
-GEMINI_API_KEY = "AIzaSyBStLIja9JLEWo7SytfWcSct0iO3FNEsO4"
+GEMINI_API_KEY = "API_KEY"
 genai.configure(api_key=GEMINI_API_KEY)
 
 model = genai.GenerativeModel('gemini-1.5-flash')
