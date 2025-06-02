@@ -73,7 +73,7 @@ const Index = () => {
     formData.append("image", file);
 
     try {
-      const response = await fetch("http://localhost:8000/process_image", {
+      const response = await fetch("/process_image", {
         method: "POST",
         body: formData,
       });
@@ -121,7 +121,7 @@ const Index = () => {
       formData.append("segmented_image", file);
 
       const diagnosisResponse = await fetch(
-        "http://localhost:8000/get_diagnosis_gemini",
+        "/get_diagnosis_gemini",
         {
           method: "POST",
           body: formData,

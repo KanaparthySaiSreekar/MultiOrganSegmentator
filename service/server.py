@@ -1,5 +1,5 @@
-
 import os
+import time
 import numpy as np
 import cv2
 import tensorflow as tf
@@ -8,7 +8,12 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 import google.generativeai as genai
-import re
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 # Initialize the FastAPI app
 app = FastAPI()
@@ -16,7 +21,7 @@ app = FastAPI()
 # Handle CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Update to specific ngrok URL or domain in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,19 +30,21 @@ app.add_middleware(
 # Suppress TensorFlow logs
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
 
-
-GEMINI_API_KEY = "API_KEY"
+# Configure Gemini API
+GEMINI_API_KEY = "AIzaSyBStLIja9JLEWo7SytfWcSct0iO3FNEsO4"
 genai.configure(api_key=GEMINI_API_KEY)
 
 model = genai.GenerativeModel('gemini-1.5-flash')
 
+# Load TensorFlow model once at startup
+tf_model = tf.keras.models.load_model('utils/model.h5')
 
 # Global parameters
 IMG_H = 256
 IMG_W = 256
 NUM_CLASSES = 11
 
-# Utility functions (unchanged from Flask)
+# Utility functions
 def create_dir(path):
     """Create a directory if it doesn't exist."""
     if not os.path.exists(path):
@@ -75,81 +82,80 @@ def grayscale_to_rgb(pred, classes, colormap):
 
 def save_results(image, pred, classes, colormap, save_image_path):
     """Save the blended image with prediction overlay."""
-    if os.path.exists(save_image_path):
-        os.remove(save_image_path)  # Delete existing file
+    try:
+        # Ensure the file is not locked before deletion
+        if os.path.exists(save_image_path):
+            try:
+                os.remove(save_image_path)
+                logger.info(f"Deleted existing file: {save_image_path}")
+            except PermissionError as e:
+                logger.warning(f"Could not delete {save_image_path}: {e}")
+                # Optionally, skip deletion and overwrite
+                pass
 
-    pred = np.expand_dims(pred, axis=-1)
-    pred = grayscale_to_rgb(pred, classes, colormap)
+        pred = np.expand_dims(pred, axis=-1)
+        pred = grayscale_to_rgb(pred, classes, colormap)
+        alpha = 0.5
+        blended_image = alpha * image + (1 - alpha) * pred
 
-    alpha = 0.5
-    blended_image = alpha * image + (1 - alpha) * pred
+        # Write the image and ensure file is closed
+        cv2.imwrite(save_image_path, blended_image)
+        logger.info(f"Saved image to: {save_image_path}")
 
-    cv2.imwrite(save_image_path, blended_image)
+    except Exception as e:
+        logger.error(f"Error saving results to {save_image_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save image: {str(e)}")
 
 # Define the POST endpoint
 @app.post('/process_image')
 async def process_image(image: UploadFile = File(...)):
     """Process the uploaded image and return the result."""
-    # Directory for storing results
-    saving_path = "results"
-    create_dir(saving_path)
+    try:
+        saving_path = "results"
+        create_dir(saving_path)
 
-    # Load the model
-    model = tf.keras.models.load_model('utils/model.h5')
+        # Generate unique filename to avoid conflicts
+        timestamp = int(time.time() * 1000)
+        save_image_path = f"{saving_path}/unet_prediction_{timestamp}.png"
 
-    # Read and preprocess the image
-    image_x = read_image(image)
-    image_array = np.expand_dims(image_x, axis=0)
+        image_x = read_image(image)
+        image_array = np.expand_dims(image_x, axis=0)
+        pred = tf_model.predict(image_array, verbose=0)[0]
+        pred = np.argmax(pred, axis=-1)
+        pred = pred.astype(np.float32)
+        classes, colormap = get_colormap()
 
-    # Make prediction
-    pred = model.predict(image_array, verbose=0)[0]
-    pred = np.argmax(pred, axis=-1)
-    pred = pred.astype(np.float32)
+        save_results(image_x, pred, classes, colormap, save_image_path)
+        return FileResponse(save_image_path, media_type='image/png')
 
-    # Get colormap and classes
-    classes, colormap = get_colormap()
-
-    # Save the result
-    save_image_path = f"{saving_path}/unet_prediction1.png"
-    save_results(image_x, pred, classes, colormap, save_image_path)
-
-    # Return the processed image
-    return FileResponse(save_image_path, media_type='image/png')
+    except Exception as e:
+        logger.error(f"Error processing image: {e}")
+        raise HTTPException(status_code=500, detail=f"Image processing failed: {str(e)}")
 
 @app.post('/get_diagnosis_gemini')
 async def get_diagnosis_gemini(segmented_image: UploadFile = File(...)):
-    """
-    Takes a segmented PNG image, sends it to the Gemini API with a prompt,
-    and returns Gemini's diagnosis.
-    """
+    """Takes a segmented PNG image, sends it to the Gemini API, and returns diagnosis."""
     try:
-        
         image_bytes = await segmented_image.read()
-
-       
         image_part = {
             'mime_type': 'image/png',
             'data': image_bytes
         }
-
-        
         prompt_parts = [
-            "Analyze the provided CT scan segmentation, which delineates anatomical structures of the kidney using color-coded regions. As a multi-specialty doctor with 20 years of experience in nephrology, radiology, and urology, identify all visible kidney structures and provide a concise medical observation or diagnosis focusing strictly on anatomical findings.",
-            "Highlight any abnormalities, such as enlarged, atrophied, or displaced renal structures, or the absence of expected anatomical features (e.g., missing renal artery or ureter). Avoid speculating on conditions not directly observable in the segmentation.",
-            "Provide specific, actionable suggestions for further evaluation or management based on the findings, tailored for a medical setting.",
-            "Format the response as follows:  \n- *Identified Structures: List all kidney structures visible in the segmentation (e.g., renal cortex, medulla, renal pelvis).  \n- **Anatomical Observations: Describe the anatomical findings, noting any abnormalities (e.g., 'The renal pelvis appears dilated; the left renal artery is not visible').  \n- **Suggestions*: Recommend next steps for clinical evaluation or management (e.g., 'Recommend Doppler ultrasound to assess renal artery absence; consider MR urography for dilated renal pelvis').",
-            "Additional Notes:  \n- Assume the CT segmentation provides sufficient detail for anatomical analysis of kidney structures.  \n- Deliver the response with expertise across nephrology, radiology, and urology, focusing on precise, objective observations suitable for a medical record.  \n- Include quantitative observations if the segmentation allows (e.g., relative size or volume of renal structures).  \n- Do not reference the image directly in the response (e.g., avoid phrases like 'the provided image shows').  \n- Maintain a professional tone, as if documenting findings for a patient chart.  \n- Optionally, list possible anatomical causes for observed abnormalities (e.g., 'Dilated renal pelvis may suggest obstruction') while staying within the scope of visible findings.",
+            "Analyze this medical image segmentation. It highlights various organs. ",
+            "Based on the segmentation, identify the organs present and provide a concise medical diagnosis or observation. ",
+            "Highlight any abnormalities or noteworthy findings if visible in the segmentation. ",
+            "For example, if you see an enlarged organ, mention it. If a normal organ is missing, mention it. ",
+            "Focus purely on anatomical observations from the segmentation. Do not guess about conditions not visible.",
+            "Do not use any special characters such as *,#, etc in the response",
             image_part,
             "Detailed diagnosis:"
         ]
-
         response = model.generate_content(prompt_parts)
-        print(response)
         diagnosis_text = response.text
-        diagnosis_text = re.sub(r'\*+', '', diagnosis_text)
-        diagnosis_text = re.sub(r'\s{2,}', ' ', diagnosis_text).strip()
         return JSONResponse(content={"diagnosis": diagnosis_text})
     except Exception as e:
+        logger.error(f"Error in Gemini diagnosis: {e}")
         raise HTTPException(status_code=500, detail=f"Error processing diagnosis: {str(e)}")
 
 # Run the app with Uvicorn
